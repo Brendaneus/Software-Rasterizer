@@ -6,6 +6,7 @@
 
 using namespace vec;
 
+#pragma pack(push, 1) // (tell compiler to not align data here)
 // Bitmap file header (empty data by default)
 struct BmpHeader {
 	char bitmapSignatureBytes[2] = { 'B', 'M' }; // bitmap header start
@@ -40,6 +41,7 @@ struct BmpInfoHeader {
         height = h;
     }
 };
+#pragma pack(pop) // (tell compiler to align data again)
 
 // Gets size of all elements (x * y) in 2D vector
 int sizeofImage(const std::vector<std::vector<float3>> &image)
@@ -58,6 +60,7 @@ void WriteImageToBmp(const std::vector<std::vector<float3>> &image, const std::s
 	int imageWidth = image[0].size();
 	int imageHeight = image.size();
 
+	// Create file headers
 	BmpHeader bmpHeader{ pixelSize };
 	BmpInfoHeader bmpInfoHeader{ imageWidth, imageHeight };
 
@@ -75,38 +78,27 @@ void WriteImageToBmp(const std::vector<std::vector<float3>> &image, const std::s
 	// Make sure file is open before attempting any writes
 	if (!imageFile.is_open()) { throw "File failed to open!"; }
 
-	// Write header to file
-	imageFile.write((char *)&bmpHeader.bitmapSignatureBytes, 2);
-	imageFile.write((char *)&bmpHeader.sizeOfBitmapFile, 4);
-	imageFile.write((char *)&bmpHeader.reservedBytes, 4);
-	imageFile.write((char *)&bmpHeader.pixelDataOffset, 4);
+	// Write file headers
+	imageFile.write((char *)&bmpHeader, sizeof(BmpHeader));
+	imageFile.write((char *)&bmpInfoHeader, sizeof(bmpInfoHeader));
 
-	// Write info header to file
-	imageFile.write((char *)&bmpInfoHeader.sizeOfThisHeader, 4);
-	imageFile.write((char *)&bmpInfoHeader.width, 4);
-	imageFile.write((char *)&bmpInfoHeader.height, 4);
-	imageFile.write((char *)&bmpInfoHeader.numberOfColorPlanes, 2);
-	imageFile.write((char *)&bmpInfoHeader.colorDepth, 2);
-	imageFile.write((char *)&bmpInfoHeader.compressionMethod, 4);
-	imageFile.write((char *)&bmpInfoHeader.rawBitmapDataSize, 4);
-	imageFile.write((char *)&bmpInfoHeader.horizontalResolution, 4);
-	imageFile.write((char *)&bmpInfoHeader.verticalResolution, 4);
-	imageFile.write((char *)&bmpInfoHeader.colorTableEntries, 4);
-	imageFile.write((char *)&bmpInfoHeader.importantColors, 4);
-
-	// Write pixel data to file
+	// Combine all pixel data before writing
+	std::vector<uint8_t> pixelData;
 	for (int y = 0; y < imageHeight; y++) {
 		for (int x = 0; x < imageWidth; x++) {
 			uint8_t rChannel = (uint8_t)(image[y][x].r * 255);
 			uint8_t gChannel = (uint8_t)(image[y][x].g * 255);
 			uint8_t bChannel = (uint8_t)(image[y][x].b * 255);
 			uint8_t alpha = 0;
-			imageFile.write((char *)&bChannel, 1);	// BMP writes blue first,
-			imageFile.write((char *)&gChannel, 1);	// green second,
-			imageFile.write((char *)&rChannel, 1);	// red third,
-			imageFile.write((char *)&alpha, 1);		// alpha last
+			pixelData.push_back(bChannel);	// BMP writes blue first,
+			pixelData.push_back(gChannel);	// green second,
+			pixelData.push_back(rChannel);	// red third,
+			pixelData.push_back(alpha);		// alpha last
 		}
 	}
+
+	// Write pixeldata to file
+	imageFile.write((char *)pixelData.data(), pixelData.size());
 
 	imageFile.close();
 }

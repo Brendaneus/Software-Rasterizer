@@ -1,344 +1,117 @@
-#include <iostream> // Debug
-#include <fstream> // Write to file
-#include <vector> // Swap for to std::array for efficiency with static size
+#include <iostream>
+#include <vector>
 #include <string>
-#include <algorithm>
-#include <random>
-#include "vec.h"
-#include "bmp_writer.h"
+#include <chrono>
+#include "rasterizer.h"
+#include "window_handler.h"
 
 using namespace vec;
 
 const int WIDTH = 800; // Datatype should be changed to prevent overflow when cast to float
 const int HEIGHT = 600; // Powers of 2 are faster
-const int TOTAL_FRAMES = 3600;
 
-// create 2D array (image) of rbg values with [height, width]
-std::vector<std::vector<float3>> BUFFER(HEIGHT, std::vector<float3>(WIDTH));
+void run( RenderTarget &target, Scene &scene)
+{
+	// Set up frametime clock
+	typedef std::chrono::high_resolution_clock time;
+	typedef std::chrono::time_point<std::chrono::high_resolution_clock> time_point;
+	typedef std::chrono::duration<float, std::milli> duration;
+	time_point timeStart;
+	time_point timeEnd;
+	duration timeElapsed;
+	int fps;
 
-std::vector<float2> vertices; // sequential list of all vertices of all triangles
-std::vector<float2> velocities; // each vertex has its own velocity
-std::vector<float3> triangleCols; // each triangle as its own color
-std::vector<float2> linePoints;
-std::vector<float> lineThicknesses;
-std::vector<float2> linePointVelocities;
-std::vector<float3> lineCols;
-std::vector<float2> points;
-std::vector<float> pointRadii;
-std::vector<float2> pointVelocities;
-std::vector<float3> pointCols;
+	int mouse_x = 0;
+	int mouse_y = 0;
+	float x_coord = 0;
+	float y_coord = 0;
 
-// Moves points with velocity, bouncing off edges of image
-void animatePoints(std::vector<float2> &points, std::vector<float2> &pointVelocities, const std::vector<std::vector<float3>> &image) {
-	for (int i = 0; i < points.size(); i++) {
-		float2 proj = points[i] + pointVelocities[i];
+	// Run until something quits the window
+	bool running = true;
+	SDL_Event event;
+	while ( running ) {
+		// Get time at start of frame
+		timeStart = std::chrono::high_resolution_clock::now();
 
-		// Reverse X direction if projected outside width
-		if (proj.x > WIDTH || proj.x < 0) {
-			pointVelocities[i + 0].x *= -1.0f;
-		}
-
-		// Reverse Y direction if projected outside height
-		if (proj.y > HEIGHT || proj.y < 0) {
-			pointVelocities[i + 0].y *= -1.0f;
-		}	
-
-		// move points by their adjusted velocities
-		points[i] += pointVelocities[i];
-	}
-}
-
-// Moves lines with velocity, bouncing off edges of image
-void animateLines(std::vector<float2> &linePoints, std::vector<float2> &linePointVelocities, const std::vector<std::vector<float3>> &image) {
-	for (int i = 0; i < linePoints.size(); i += 2) {
-		float2 aProj = linePoints[i + 0] + linePointVelocities[i + 0];
-		float2 bProj = linePoints[i + 1] + linePointVelocities[i + 1];
-
-		// Reverse X direction if outside width (per point)
-		if (aProj.x < 0 || aProj.x > WIDTH) {
-			linePointVelocities[i + 0].x *= -1.0f;
-		}
-		if (bProj.x < 0 || bProj.x > WIDTH) {
-			linePointVelocities[i + 1].x *= -1.0f;
-		}
-
-		// Reverse Y direction if outside height (per point)
-		if (aProj.y < 0 || aProj.y > HEIGHT) {
-			linePointVelocities[i + 0].y *= -1.0f;
-		}	
-		if (bProj.y < 0 || bProj.y > HEIGHT) {
-			linePointVelocities[i + 1].y *= -1.0f;
-		}	
-
-		// move points by their velocities
-		linePoints[i + 0] += linePointVelocities[i + 0];
-		linePoints[i + 1] += linePointVelocities[i + 1];
-	}
-}
-
-// Moves triangles with velocity, bouncing off edges of image
-void animateTriangles(std::vector<float2> &vertices, std::vector<float2> &velocities, const std::vector<std::vector<float3>> &image) {
-	for (int i = 0; i < vertices.size(); i += 3) {
-		float2 aProj = vertices[i + 0] + velocities[i + 0];
-		float2 bProj = vertices[i + 1] + velocities[i + 1];
-		float2 cProj = vertices[i + 2] + velocities[i + 2];
-
-		// Reverse X direction if outside width (per vertex)
-		if (aProj.x > WIDTH || aProj.x < 0) {
-			velocities[i + 0].x *= -1.0f;
-		}
-		if (bProj.x > WIDTH || bProj.x < 0) {
-			velocities[i + 1].x *= -1.0f;
-		}
-		if (cProj.x > WIDTH || cProj.x < 0) {
-			velocities[i + 2].x *= -1.0f;
-		}
-
-		// Reverse Y direction if outside height (per vertex)
-		if (aProj.y > HEIGHT || aProj.y < 0) {
-			velocities[i + 0].y *= -1.0f;
-		}	
-		if (bProj.y > HEIGHT || bProj.y < 0) {
-			velocities[i + 1].y *= -1.0f;
-		}	
-		if (cProj.y > HEIGHT || cProj.y < 0) {
-			velocities[i + 2].y *= -1.0f;
-		}
-
-		// move vertices by their velocities
-		vertices[i + 0] += velocities[i + 0];
-		vertices[i + 1] += velocities[i + 1];
-		vertices[i + 2] += velocities[i + 2];
-	}
-}
-
-// Sets all pixels in image to background color
-void clearImage(std::vector<std::vector<float3>> &image) {
-	float3 backgroundColor{ 0, 0, 0 };
-
-	for (int y = 0; y < image.size(); y++) {
-		for (int x = 0; x < image[0].size(); x++) {
-			image[y][x] = backgroundColor;
-		}
-	}
-}
-
-// Draws points onto image
-void drawPoints(const std::vector<float2> &points, const std::vector<float> &pointRadii, const std::vector<float3> &pointCols, std::vector<std::vector<float3>> &image) {
-	for (int i = 0; i < points.size(); i++) {
-		float2 point = points[i];
-		float radius = pointRadii[i];
-
-		// Draw within bounding box of point radius
-		float minX = std::max((int)(point.x - radius), 0);
-		float minY = std::max((int)(point.y - radius), 0);
-		float maxX = std::min((int)(point.x + radius + 1.0f), WIDTH);
-		float maxY = std::min((int)(point.y + radius + 1.0f), HEIGHT);
-
-		// Scan bounding box one pixel at a time
-		for (int y = minY; y < maxY; y++) {
-			for (int x = minX; x < maxX; x++) {
-				float2 pixel = float2(x, y);
-
-				// Color pixel if inside the triangle
-				if (pointInsideRadius(point, pixel, radius)) {
-					image[y][x] = pointCols[i];
-				}
+		// Poll window continuously and respond on event
+		while ( SDL_PollEvent( &event ) != 0 ) {
+			switch ( event.type ) {
+			case SDL_QUIT:
+				running = false;
+				break;
+			case SDL_MOUSEMOTION:
+				mouse_x = event.motion.x;
+				mouse_y = event.motion.y;
+				// Map mouse location to world coordinates
+				x_coord = ((float)mouse_x - WIDTH / 2) / WIDTH * 5;
+				y_coord = -((float)mouse_y - HEIGHT / 2) / HEIGHT * 5;
+				break;
 			}
 		}
+
+		// Animate objects
+		scene.getModel( "Suzanne" ).transform.rotatePitch( 1.0f );
+		scene.getModel( "Suzanne" ).transform.setPosition( { x_coord, y_coord, 5.0f } );
+		scene.getModel( "cube" ).transform.rotateYaw( 1.0f );
+		scene.getModel( "cube2" ).transform.rotateYaw( -1.0f );
+
+		// Reset buffers before rendering
+		clearImage( target ); // 0-3ms
+
+		// Render whole scene at once
+		renderMany( target, scene.data() ); // 16-19ms
+
+		// Load rendered image to buffer
+		window::loadPixelsToBuffer(target.colorBuffer);
+		
+		// Display buffer thru window
+		window::drawToWindow();
+
+		// Get time at end of frame and measure duration elapsed
+		timeEnd = time::now();
+		timeElapsed = timeEnd - timeStart;
+		fps = 1000 / timeElapsed.count();
+		//printf( "Frametime: %2dms\n", (int)timeElapsed.count() );
+		printf( "FPS: %3d\n", fps );
 	}
 }
 
-// Draws lines onto image
-void drawLines(const std::vector<float2> &linePoints, const std::vector<float> &lineThicknesses, const std::vector<float3> &lineCols, std::vector<std::vector<float3>> &image) {
-	const float WIDTH_F = (float)WIDTH;
-	const float HEIGHT_F = (float)HEIGHT;
-	
-	// Draw 1 line at a time (two points)
-	for (int i = 0; i < linePoints.size(); i += 2) {
-		float2 pointA = linePoints[i + 0];
-		float2 pointB = linePoints[i + 1];
-		float thickness = lineThicknesses[i / 2];
-
-		// Draw only within bounding box of line
-		float minX = std::clamp(std::min({ pointA.x - thickness * 2, pointB.x - thickness * 2 }), 0.0f, WIDTH_F);
-		float minY = std::clamp(std::min({ pointA.y - thickness * 2, pointB.y - thickness * 2 }), 0.0f, HEIGHT_F);
-		float maxX = std::clamp(std::max({ pointA.x + thickness * 2, pointB.x + thickness * 2 }), 0.0f, WIDTH_F);
-		float maxY = std::clamp(std::max({ pointA.y + thickness * 2, pointB.y + thickness * 2 }), 0.0f, HEIGHT_F);
-
-		// Scan bounding box one pixel at a time
-		for (int y = minY; y < maxY; y++) {
-			for (int x = minX; x < maxX; x++) {
-				float2 pixel = float2(x, y);
-
-				// Color pixel if inside the triangle
-				if (lineInterectsRadius(pointA, pointB, pixel, thickness)) {
-					image[y][x] = lineCols[i / 2];
-				}
-			}
-		}
-	}
-}
-
-// Draws triangles onto image
-void drawTriangles(const std::vector<float2> &vertices, const std::vector<float3> &triangleCols, std::vector<std::vector<float3>> &image) {
-	// Draw 1 triangle at a time (three vertices)
-	for (int i = 0; i < vertices.size(); i += 3) {
-		float2 vertA = vertices[i + 0];
-		float2 vertB = vertices[i + 1];
-		float2 vertC = vertices[i + 2];
-
-		// Draw only within bounding box of triangle
-		float minX = std::min({ vertA.x, vertB.x, vertC.x });
-		float minY = std::min({ vertA.y, vertB.y, vertC.y });
-		float maxX = std::max({ vertA.x, vertB.x, vertC.x });
-		float maxY = std::max({ vertA.y, vertB.y, vertC.y });
-
-		// Scan bounding box one pixel at a time
-		for (int y = minY; y <= maxY; y++) {
-			for (int x = minX; x <= maxX; x++) {
-				float2 pixel = float2(x, y);
-				
-				// Color pixel if inside the triangle
-				if (pointInsideTriangle(vertA, vertB, vertC, pixel)) {
-					image[y][x] = triangleCols[i / 3];
-				}
-			}
-		}
-	}
-}
-
-void run() {
-	for (int frame = 0; frame < TOTAL_FRAMES; frame++) {
-		animateTriangles(vertices, velocities, BUFFER);
-		animateLines(linePoints, linePointVelocities, BUFFER);
-		animatePoints(points, pointVelocities, BUFFER);
-		clearImage(BUFFER);
-		drawTriangles(vertices, triangleCols, BUFFER);
-		drawLines(linePoints, lineThicknesses, lineCols, BUFFER);
-		drawPoints(points, pointRadii, pointCols, BUFFER);
-		WriteImageToBmp(BUFFER, "Points and Lines and Triangles", frame);
-		std::cout << "Frame " << frame << " rendered.\n";
-	}
-}
-
-// Creates, renders, and outputs a single image of a fixed point
-void createMovingPoints()
+int main( int argc, char **argv )
 {
-	const int pointsCount = 250;
-	points = std::vector<float2>(pointsCount); // sequential list of all vertex of all pointss
-	pointVelocities = std::vector<float2>(pointsCount); // each point has its own velocity
-	pointRadii = std::vector<float>(pointsCount); // each point has a radius
-	pointCols = std::vector<float3>(pointsCount);
-	
-	// Set up random generator
-	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::uniform_real_distribution<float> distX(0.0f, (float)WIDTH); // float cast necessary here?
-	std::uniform_real_distribution<float> distY(0.0f, (float)HEIGHT);
-	std::uniform_real_distribution<float> distR(0.5f, 3.0f);
-	std::uniform_real_distribution<float> distC(0.0f, 255.0f);
+	// TODO: Allow multiple models of each obj file
 
-	float2 halfSize = float2{ WIDTH, HEIGHT } / 2.0f;
-
-	// randomly each point's location, velocity, radius, and color
-	for (int i = 0; i < points.size(); i++) {
-		// generate a random point
-		points[i] = { distX(gen), distY(gen) };
-		// generate a random velocity and scale it down
-		float2 velocity{ distX(gen), distY(gen) };
-		pointVelocities[i] = (velocity - halfSize) * 0.01f;
-		// generate a random radius
-		pointRadii[i] = distR(gen);
-		// generate a random color
-		pointCols[i] = float3{ distC(gen), distC(gen), distC(gen) };
-	}
-}
-
-// Creates, renders, and outputs a single image of a fixed line
-void createMovingLines()
-{
-	const int lineCount = 50;
-	linePoints = std::vector<float2>(lineCount * 2); // sequential list of all vertex of all triangles
-	linePointVelocities = std::vector<float2>(linePoints.size()); // each point has it's own velocity
-	lineThicknesses = std::vector<float>(lineCount);
-	lineCols = std::vector<float3>(lineCount);
-
-	// Set up random generator
-	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::uniform_real_distribution<float> distX(0.0f, (float)WIDTH);
-	std::uniform_real_distribution<float> distY(0.0f, (float)HEIGHT);
-	std::uniform_real_distribution<float> distT(0.25f, 1.5f);
-	std::uniform_real_distribution<float> distC(0.0f, 255.0f);
-	
-	float2 halfSize = float2{ WIDTH, HEIGHT } / 2.0f;
-
-	// Randomly generate a bunch of points for the lines
-	for (int i = 0; i < linePoints.size(); i++) {
-		float2 pos{ distX(gen), distY(gen) };
-		linePoints[i] = halfSize + (pos - halfSize) * 0.5f; // scale the distribution
+	// Generate models for each obj file in folder
+	std::map<const char *, Model> modelLibrary = Scene::generateLibrary( { "cube", "Suzanne" } );
+	// HACK: Rotate 180deg and push everything back 5 units to appear right-side-up and in front of camera
+	for ( auto &[name, model] : modelLibrary ) {
+		model.transform.setOrientation( { 0.0f, 180.0f, 0.0f } );
+		model.transform.setPosition( { 0.0f, 0.0f, 5.0f } );
 	}
 
-	// Randomly generate a single velocity, thickness, and color for each triangle
-	for (int i = 0; i < linePointVelocities.size(); i += 2) {
-		float2 velocity{ distX(gen), distY(gen) };
-		velocity = (velocity - halfSize) * 0.01f; // scale the velocity
+	// HACK: Duplicate existing model in library under another name
+	Model cube2 = modelLibrary.at( "cube" );
+	modelLibrary.insert( { "cube2", cube2 } );
 
-		lineThicknesses[i / 2] = distT(gen);
+	// Position models
+	modelLibrary.at( "cube" ).transform.translate( { -2.0f, +0.5f, +2.0f } );
+	modelLibrary.at( "cube" ).transform.rotateYaw( -30.0f );
+	modelLibrary.at( "cube2" ).transform.translate( { +2.0f, +0.5f, +2.0f } );
+	modelLibrary.at( "cube2" ).transform.rotateYaw( +30.0f );
 
-		// each point in a line gets the same initial velocity
-		linePointVelocities[i + 0] = velocity;
-		linePointVelocities[i + 1] = velocity;
+	// Wrap models into scene
+	Scene scene( modelLibrary );
 
-		// each line gets a single random color
-		lineCols[i / 2] = float3{ distC(gen), distC(gen), distC(gen) };
-	}
-}
+	// Create target buffer to render onto
+	RenderTarget renderTarget( WIDTH, HEIGHT );
 
-// Creates, renders, and outputs many frames of several moving triangles
-void createMovingTriangles() {
-	const int triangleCount = 30;
-	vertices = std::vector<float2>(triangleCount * 3); // sequential list of all vertex of all triangles
-	velocities = std::vector<float2>(vertices.size()); // each point has it's own velocity
-	triangleCols = std::vector<float3>(triangleCount);
+	// Set up SDL
+	window::init( WIDTH, HEIGHT );
 
-	// Set up random generator
-	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::uniform_real_distribution<float> distX(0.0f, (float)WIDTH);
-	std::uniform_real_distribution<float> distY(0.0f, (float)HEIGHT);
-	std::uniform_real_distribution<float> distC(0.0f, 255.0f);
-	
-	float2 halfSize = float2{ WIDTH, HEIGHT } / 2.0f;
+	// Run SDL loop
+	run( renderTarget, scene );
 
-	// Randomly generate a bunch of vertices for the triangles
-	for (int i = 0; i < vertices.size(); i++) {
-		float2 pos{ distX(gen), distY(gen) }; // generate
-		vertices[i] = halfSize + (pos - halfSize) * 0.3f; // scale the distribution
-	}
-
-	// Randomly generate a single velocity and color for each triangle
-	for (int i = 0; i < velocities.size(); i += 3) {
-		float2 velocity{ distX(gen), distY(gen) }; // generate
-		velocity = (velocity - halfSize) * 0.01f; // scale the velocity
-		velocities[i + 0] = velocity;
-		velocities[i + 1] = velocity; // each vertex in a triangle gets the same initial velocity
-		velocities[i + 2] = velocity;
-		// each triangle gets one color
-		triangleCols[i / 3] = float3{ distC(gen), distC(gen), distC(gen) };
-	}
-}
-
-int main()
-{
-	// draw primitives
-	createMovingPoints();
-	createMovingLines();
-	createMovingTriangles();
-
-	// run rendering loop
-	run();
+	// Quit SDL
+	window::close();
 
 	return 0;
 }
