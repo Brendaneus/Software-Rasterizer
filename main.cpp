@@ -42,7 +42,7 @@ void run( RenderTarget &target, Scene &scene)
 			case SDL_MOUSEMOTION:
 				mouse_x = event.motion.x;
 				mouse_y = event.motion.y;
-				// Map mouse location to world coordinates
+				// Map mouse location to world coordinates (invert Y)
 				x_coord = ((float)mouse_x - WIDTH / 2) / WIDTH * 5;
 				y_coord = -((float)mouse_y - HEIGHT / 2) / HEIGHT * 5;
 				break;
@@ -51,15 +51,16 @@ void run( RenderTarget &target, Scene &scene)
 
 		// Animate objects
 		scene.getModel( "Suzanne" ).transform.rotatePitch( 1.0f );
-		scene.getModel( "Suzanne" ).transform.setPosition( { x_coord, y_coord, 5.0f } );
+		scene.getModel( "Suzanne" ).transform.setPosition( { x_coord, y_coord, -4.0f } );
 		scene.getModel( "cube" ).transform.rotateYaw( 1.0f );
 		scene.getModel( "cube2" ).transform.rotateYaw( -1.0f );
+		scene.getModel( "quad" ).transform.rotateYaw( 1.0f );
 
 		// Reset buffers before rendering
-		clearImage( target ); // 0-3ms
+		clearImage( target );
 
 		// Render whole scene at once
-		renderMany( target, scene.data() ); // 16-19ms
+		renderMany( target, scene.data() );
 
 		// Load rendered image to buffer
 		window::loadPixelsToBuffer(target.colorBuffer);
@@ -71,9 +72,10 @@ void run( RenderTarget &target, Scene &scene)
 		timeEnd = time::now();
 		timeElapsed = timeEnd - timeStart;
 		fps = 1000 / timeElapsed.count();
-		//printf( "Frametime: %2dms\n", (int)timeElapsed.count() );
 		printf( "FPS: %3d\n", fps );
 	}
+	// HACK: Keep window open on last frame
+	SDL_Event e; bool quit = false; while ( quit == false ) { while ( SDL_PollEvent( &e ) ) { if ( e.type == SDL_QUIT ) quit = true; } }
 }
 
 int main( int argc, char **argv )
@@ -81,11 +83,11 @@ int main( int argc, char **argv )
 	// TODO: Allow multiple models of each obj file
 
 	// Generate models for each obj file in folder
-	std::map<const char *, Model> modelLibrary = Scene::generateLibrary( { "cube", "Suzanne" } );
-	// HACK: Rotate 180deg and push everything back 5 units to appear right-side-up and in front of camera
+	std::map<const char *, Model> modelLibrary = Scene::generateLibrary( { "quad", "cube", "Suzanne" } );
+
+	// HACK: Push everything back 5 units to appear in front of camera
 	for ( auto &[name, model] : modelLibrary ) {
-		model.transform.setOrientation( { 0.0f, 180.0f, 0.0f } );
-		model.transform.setPosition( { 0.0f, 0.0f, 5.0f } );
+		model.transform.setPosition( { 0.0f, 0.0f, -5.0f } );
 	}
 
 	// HACK: Duplicate existing model in library under another name
@@ -93,10 +95,13 @@ int main( int argc, char **argv )
 	modelLibrary.insert( { "cube2", cube2 } );
 
 	// Position models
-	modelLibrary.at( "cube" ).transform.translate( { -2.0f, +0.5f, +2.0f } );
+	modelLibrary.at( "cube" ).transform.translate( { -2.5f, +1.5f, -1.0f } );
 	modelLibrary.at( "cube" ).transform.rotateYaw( -30.0f );
-	modelLibrary.at( "cube2" ).transform.translate( { +2.0f, +0.5f, +2.0f } );
+	modelLibrary.at( "cube2" ).transform.translate( { +2.5f, +1.5f, -1.0f } );
 	modelLibrary.at( "cube2" ).transform.rotateYaw( +30.0f );
+	modelLibrary.at( "quad" ).transform.setScale( 5.0f );
+	modelLibrary.at( "quad" ).transform.translate( { +0.0f, -3.0f, -2.5f } );
+	modelLibrary.at( "quad" ).transform.rotatePitch( +90.0f );
 
 	// Wrap models into scene
 	Scene scene( modelLibrary );

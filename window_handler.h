@@ -42,7 +42,7 @@ namespace window
 			int yOffset = (y * width);
 			for ( int x = 0; x < width; x++ ) {
 				// HACK: Load pixels bottom-up instead of top-down
-				pixels[yOffset + x] = pixelColors[height - y - 1][x].toUint32();
+				pixels[yOffset + x] = pixelColors[y][x].toUint32();
 			}
 		}
 	}

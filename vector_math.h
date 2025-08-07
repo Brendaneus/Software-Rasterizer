@@ -114,7 +114,7 @@ namespace vec {
 		}
 
 		// Gets vector rotated 90 degress clockwise
-		float2 perpendicular() const
+		float2 perpendicularCW() const
 		{
 			return float2{ y, -x };
 		}
@@ -173,7 +173,7 @@ namespace vec {
 
 	// Area of 2D triangle given three vertices (positive if clockwise, negative if counter-clockwise)
 	float signedTriangleArea(const float2 &vertA, const float2 &vertB, const float2 &vertC) {
-		float2 perpAB = (vertB - vertA).perpendicular();
+		float2 perpAB = (vertB - vertA).perpendicularCW();
 		float2 vecAC = vertC - vertA;
 
 		return perpAB.dot(vecAC) / 2;

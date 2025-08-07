@@ -1,5 +1,5 @@
 // Controls models of a scene as they exist in vector coordinates
-// TODO LIST: Transform, Scene
+// TODO LIST: Scene
 #pragma once
 #include <vector>
 #include <map>
@@ -7,7 +7,6 @@
 #include "vector_math.h"
 #include "object_loader.h"
 
-// TODO: fix models loading in upside down and backwards
 // Utility class used by other elements for spatial coordinate manipulation
 class Transform
 {
@@ -16,6 +15,7 @@ private:
 	float yaw = 0.0f; // model y axis rotation
 	float roll = 0.0f; // model z axis rotation
 	float3 position{ 0.0f, 0.0f, 0.0f };
+	float scale = 1.0f; // model size scale
 public:
 	// Predicting some overflow problems here...
 	void rotateYaw( const float &deg )
@@ -57,6 +57,11 @@ public:
 		position = newPosition;
 	}
 
+	void setScale( float newScale )
+	{
+		scale = newScale;
+	}
+
 	// Rotates vector to match current orientaion
 	float3 transformVector( const float3 &ihat, const float3 &jhat, const float3 &khat, const float3 &v )
 	{
@@ -65,7 +70,7 @@ public:
 	}
 
 	// Get unit vectors representing current orientation
-	std::vector<float3> getlocalUnits()
+	std::vector<float3> getlocalUnitVecs()
 	{
 		const float yawRads = (yaw / 180.0f) * num::pi;
 		const float pitchRads = (pitch / 180.0f) * num::pi;
@@ -128,8 +133,8 @@ public:
 	// Transforms vector based on current orientation and world position
 	float3 toWorld( const float3 &p )
 	{
-		std::vector<float3> unitVectors = getlocalUnits();
-		return transformVector( unitVectors[0], unitVectors[1], unitVectors[2], p ) + position;
+		std::vector<float3> unitVectors = getlocalUnitVecs();
+		return transformVector( unitVectors[0], unitVectors[1], unitVectors[2], p ) * scale + position;
 	}
 };
 
